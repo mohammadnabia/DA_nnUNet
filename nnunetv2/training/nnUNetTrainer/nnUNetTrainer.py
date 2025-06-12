@@ -483,41 +483,29 @@ class nnUNetTrainer(object):
 
     def plot_network_architecture(self):
         if self._do_i_compile():
-            self.print_to_log_file("Unable to plot network architecture: nnUNet_compile is enabled!")
-            return
+        self.print_to_log_file("Skipping architecture plotting due to nnUNet_compile=True.")
+        return
 
         if self.local_rank == 0:
-            try:
-                # raise NotImplementedError('hiddenlayer no longer works and we do not have a viable alternative :-(')
-                # pip install git+https://github.com/saugatkandel/hiddenlayer.git
-
-                # from torchviz import make_dot
-                # # not viable.
-                # make_dot(tuple(self.network(torch.rand((1, self.num_input_channels,
-                #                                         *self.configuration_manager.patch_size),
-                #                                        device=self.device)))).render(
-                #     join(self.output_folder, "network_architecture.pdf"), format='pdf')
-                # self.optimizer.zero_grad()
-
-                # broken.
-
-                import hiddenlayer as hl
-                g = hl.build_graph(self.network,
-                                   torch.rand((1, self.num_input_channels,
-                                               *self.configuration_manager.patch_size),
-                                              device=self.device),
-                                   transforms=None)
-                g.save(join(self.output_folder, "network_architecture.pdf"))
-                del g
-            except Exception as e:
-                self.print_to_log_file("Unable to plot network architecture:")
-                self.print_to_log_file(e)
-
-                # self.print_to_log_file("\nprinting the network instead:\n")
-                # self.print_to_log_file(self.network)
-                # self.print_to_log_file("\n")
-            finally:
-                empty_cache(self.device)
+        try:
+            import torch
+            import os
+            dummy_input = torch.randn(1, self.num_input_channels, *self.configuration_manager.patch_size).to(self.device)
+            onnx_path = os.path.join(self.output_folder, "network_architecture.onnx")
+            torch.onnx.export(
+                self.network,
+                dummy_input,
+                onnx_path,
+                export_params=True,
+                opset_version=11,
+                do_constant_folding=True,
+                input_names=["input"],
+                output_names=["output"]
+            )
+            self.print_to_log_file(f"Network exported to ONNX format at: {onnx_path}", also_print_to_console=True)
+        except Exception as e:
+            self.print_to_log_file("Failed to export network to ONNX format.")
+            self.print_to_log_file(e, also_print_to_console=True)
 
     def do_split(self):
         """
